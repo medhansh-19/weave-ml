@@ -24,7 +24,7 @@ _COMMAND = re.compile(
     re.IGNORECASE,
 )
 _BLOCKED_HEADING = re.compile(
-    r"\b(?:install(?:ation)?|setup|getting started|quick ?start|api(?: reference)?|"
+    r"\b(?:install(?:ation)?|setup|getting started|quick ?start|api\s+(?:reference|docs?)|"
     r"reference|changelog|release notes?|licen[cs]e|contributors?|contributing|"
     r"development|build from source|table of contents|contents)\b",
     re.IGNORECASE,

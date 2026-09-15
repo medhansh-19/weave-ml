@@ -29,7 +29,7 @@ _COMMAND = re.compile(
 )
 _README_SECTION = re.compile(
     r"\b(?:installation|installing|getting started|quick ?start|changelog|"
-    r"release notes?|licen[cs]e|contributors?|contributing|api(?: reference)?|"
+    r"release notes?|licen[cs]e|contributors?|contributing|api\s+(?:reference|docs?)|"
     r"reference|table of contents|badges?)\b",
     re.IGNORECASE,
 )

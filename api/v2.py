@@ -507,7 +507,7 @@ def _embed_repository_job_locked(request: RepositoryJob, lock: Any) -> dict[str,
             stored_payload = dict(stored.payload or {})
             artifact = card_summary_from_payload(stored_payload)
             job_status = final_status
-        if artifact is None or not pipeline.card_summarizer.is_current(artifact):
+        if artifact is None:
             raise V2ServiceHTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Repository summary state changed; retry the request.",

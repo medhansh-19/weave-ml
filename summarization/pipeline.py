@@ -29,7 +29,7 @@ _UNSAFE_SENTENCE = re.compile(
     r"(?:install|add|run|get)\b|\b(?:brew|apt(?:-get)?|dnf|yum|pacman|choco|"
     r"winget)\s+install\b|\bgit\s+clone\b|\b(?:curl|wget)\s+https?://|"
     r"\b(?:installation|installing|setup|getting started|quick ?start|changelog|"
-    r"licen[cs]e|contributors?|contributing|api(?: reference)?|reference|"
+    r"licen[cs]e|contributors?|contributing|api\s+(?:reference|docs?)|reference|"
     r"table of contents|badges?)\b)",
     re.IGNORECASE,
 )
