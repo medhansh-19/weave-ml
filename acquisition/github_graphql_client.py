@@ -170,14 +170,10 @@ class GitHubGraphQLClient:
                 if blob is None:
                     continue
                 if not isinstance(blob, dict) or "text" not in blob:
-                    raise GitHubClientError(
-                        f"README query returned an incomplete {key} object"
-                    )
+                    continue
                 text = blob["text"]
                 if not isinstance(text, str):
-                    raise GitHubClientError(
-                        f"README query returned invalid text for {key}"
-                    )
+                    continue
                 if text:
                     return FetchedReadme(
                         text,

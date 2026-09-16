@@ -175,14 +175,14 @@ def test_get_readme_accepts_an_incomplete_alias_set():
 
 
 @pytest.mark.unit
-def test_get_readme_rejects_an_incomplete_alias_object():
+def test_get_readme_skips_an_incomplete_alias_object():
     client = GitHubGraphQLClient(token="test-token")
     client.execute = MagicMock(
-        return_value=_complete_readme_response(readme1={})
+        return_value=_complete_readme_response(readme1={}, readme2={"text": "# Valid fallback"})
     )
 
-    with pytest.raises(GitHubGraphQLClientError, match="incomplete readme1"):
-        client.get_readme("owner", "repo")
+    readme = client.get_readme("owner", "repo")
+    assert readme == "# Valid fallback"
 
 
 @pytest.mark.unit
