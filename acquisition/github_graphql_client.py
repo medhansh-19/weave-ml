@@ -163,14 +163,7 @@ class GitHubGraphQLClient:
                 raise GitHubClientError(
                     "README query response is missing default-branch metadata"
                 )
-            missing_aliases = [
-                alias for alias, _source_path in README_CANDIDATES if alias not in repo
-            ]
-            if missing_aliases:
-                raise GitHubClientError(
-                    "README query response is incomplete; missing aliases: "
-                    + ", ".join(missing_aliases)
-                )
+
             default_branch = (repo.get("defaultBranchRef") or {}).get("name")
             for key, source_path in README_CANDIDATES:
                 blob = repo.get(key)
