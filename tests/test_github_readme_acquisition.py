@@ -163,14 +163,15 @@ def test_get_readme_rejects_unresolved_or_missing_repository(response):
 
 
 @pytest.mark.unit
-def test_get_readme_rejects_an_incomplete_alias_set():
-    response = _complete_readme_response()
+def test_get_readme_accepts_an_incomplete_alias_set():
+    response = _complete_readme_response(readme1={"text": "# Valid"})
     del response["data"]["repository"][README_CANDIDATES[-1][0]]
     client = GitHubGraphQLClient(token="test-token")
     client.execute = MagicMock(return_value=response)
 
-    with pytest.raises(GitHubGraphQLClientError, match="missing aliases"):
-        client.get_readme("owner", "repo")
+    # Should not raise an error now, but return successfully using available aliases
+    result = client.get_readme("owner", "repo")
+    assert result == "# Valid"
 
 
 @pytest.mark.unit
