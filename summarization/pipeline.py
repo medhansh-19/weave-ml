@@ -39,6 +39,7 @@ _MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
 _MARKDOWN_STRUCTURE = re.compile(
     r"(?m)^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)|```|~~~|`"
 )
+_MARKDOWN_EMPHASIS = re.compile(r"(\*\*|__|\*|_|~~)(.*?)")
 _URL = re.compile(r"https?://\S+")
 
 
@@ -61,6 +62,7 @@ def _plain_description(value: Any) -> str:
     text = _MARKDOWN_LINK.sub(r"\1", text)
     text = _URL.sub("", text)
     text = _MARKDOWN_STRUCTURE.sub("", text)
+    text = _MARKDOWN_EMPHASIS.sub(r"\2", text)
     return normalize_summary(text)
 
 
