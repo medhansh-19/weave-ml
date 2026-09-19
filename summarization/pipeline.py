@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import re
+import time
 from typing import Any
 
 from .contracts import (
@@ -159,7 +160,7 @@ class CardSummaryPipeline:
             and artifact.model_version == CARD_SUMMARY_FALLBACK_MODEL_VERSION
         )
 
-    def summarize(self, source: Any, repo: Mapping[str, Any]) -> CardSummaryArtifact:
+    def summarize(self, source: Any, repo: Mapping[str, Any], *, deadline: float | None = None) -> CardSummaryArtifact:
         material = build_summary_source(
             source,
             repo,
@@ -168,10 +169,13 @@ class CardSummaryPipeline:
         if self.provider is not None and material.prompt_input:
             repair_feedback: str | None = None
             for _attempt in range(2):
+                if deadline is not None and time.monotonic() > deadline:
+                    break
                 try:
                     raw = self.provider.generate(
                         material.prompt_input,
                         repair_feedback=repair_feedback,
+                        deadline=deadline,
                     )
                     content = validate_generated_summary(
                         parse_summary_response(raw),

@@ -5,6 +5,7 @@ import copy
 import logging
 import math
 import os
+import time
 from dataclasses import asdict
 from functools import lru_cache
 from typing import Any
@@ -32,7 +33,9 @@ from config import constant_time_secret_matches, internal_api_header_name
 from embedding.qdrant_store import QdrantRepositoryStore
 from embedding.runtime import (
     EmbeddingCapacityError,
+    EmbeddingDeadlineExceeded,
     embedding_runtime_status,
+    embedding_timeout_seconds,
     embedding_warmup_enabled,
     repository_embedding_pipeline,
     run_embedding_job,
@@ -428,13 +431,13 @@ def _repository_job_lock(repo_id: str):
         ) from exc
 
 
-def _embed_repository_job(request: RepositoryJob) -> dict[str, Any]:
+def _embed_repository_job(request: RepositoryJob, deadline: float | None = None) -> dict[str, Any]:
     repo_id = str(request.repo_id)
     job_id = str(request.job_id)
     try:
         lock_context = _repository_job_lock(repo_id)
         with lock_context as lock:
-            return _embed_repository_job_locked(request, lock)
+            return _embed_repository_job_locked(request, lock, deadline=deadline)
     except (LockAcquisitionError, LockLostError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -443,7 +446,7 @@ def _embed_repository_job(request: RepositoryJob) -> dict[str, Any]:
         ) from exc
 
 
-def _embed_repository_job_locked(request: RepositoryJob, lock: Any) -> dict[str, Any]:
+def _embed_repository_job_locked(request: RepositoryJob, lock: Any, deadline: float | None = None) -> dict[str, Any]:
     repo_id = str(request.repo_id)
     job_id = str(request.job_id)
     lock.assert_owned()
@@ -483,7 +486,7 @@ def _embed_repository_job_locked(request: RepositoryJob, lock: Any) -> dict[str,
         artifact = card_summary_from_payload(stored_payload)
         if artifact is None or not pipeline.card_summarizer.is_current(artifact):
             payload = _repository_embedding_payload(request)
-            artifact = pipeline.summarize_repository(payload)
+            artifact = pipeline.summarize_repository(payload, deadline=deadline)
             lock.assert_owned()
             stored = repository_store().compare_and_set_card_summary(
                 expected_point=expected_point,
@@ -525,7 +528,7 @@ def _embed_repository_job_locked(request: RepositoryJob, lock: Any) -> dict[str,
         )
 
     payload = _repository_embedding_payload(request)
-    result = pipeline.embed_repository(payload)
+    result = pipeline.embed_repository(payload, deadline=deadline)
     result.payload["content_job_id"] = job_id
 
     # Content upsert replaces the complete point. Carry forward independently
@@ -907,13 +910,20 @@ async def submit_feedback(request: FeedbackBatch, http_request: Request):
 @router.post("/repositories/embed", dependencies=[Depends(require_internal_secret)])
 async def embed_repository(request: RepositoryJob, http_request: Request):
     try:
-        return await run_embedding_job(_embed_repository_job, request)
+        deadline = time.monotonic() + embedding_timeout_seconds()
+        return await run_embedding_job(_embed_repository_job, request, deadline=deadline)
     except HTTPException:
         raise
     except EmbeddingCapacityError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Embedding capacity is temporarily exhausted; retry the request.",
+            headers={"Retry-After": "2"},
+        ) from exc
+    except EmbeddingDeadlineExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Embedding generation exceeded its bounded deadline.",
             headers={"Retry-After": "2"},
         ) from exc
     except Exception as exc:

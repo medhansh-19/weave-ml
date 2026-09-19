@@ -62,7 +62,7 @@ class SequenceProvider:
         self.responses = list(responses)
         self.calls: list[tuple[str, str | None]] = []
 
-    def generate(self, source: str, *, repair_feedback: str | None = None) -> str:
+    def generate(self, source: str, *, repair_feedback: str | None = None, deadline: float | None = None) -> str:
         self.calls.append((source, repair_feedback))
         response = self.responses.pop(0)
         if isinstance(response, Exception):

@@ -23,7 +23,7 @@ class SummaryProviderError(RuntimeError):
 
 
 class SummaryProvider(Protocol):
-    def generate(self, source: str, *, repair_feedback: str | None = None) -> str: ...
+    def generate(self, source: str, *, repair_feedback: str | None = None, deadline: float | None = None) -> str: ...
 
 
 class SummaryRateLimiter:
@@ -104,7 +104,7 @@ class OpenRouterSummaryProvider:
             "provider": {"require_parameters": True},
         }
 
-    def generate(self, source: str, *, repair_feedback: str | None = None) -> str:
+    def generate(self, source: str, *, repair_feedback: str | None = None, deadline: float | None = None) -> str:
         if not source or len(source) > self.settings.input_max_chars:
             raise ValueError("summary source is empty or exceeds the configured bound")
         headers = {
@@ -115,13 +115,21 @@ class OpenRouterSummaryProvider:
         payload = self._request_payload(source, repair_feedback=repair_feedback)
         attempts = self.settings.max_retries + 1
         for attempt in range(attempts):
+            if deadline is not None and time.monotonic() > deadline:
+                raise SummaryProviderError("summary generation exceeded embedding job deadline")
             self.limiter.wait()
+            if deadline is not None:
+                if time.monotonic() > deadline:
+                    raise SummaryProviderError("summary generation exceeded embedding job deadline")
+                request_timeout = min(self.settings.request_timeout_seconds, max(0.1, deadline - time.monotonic()))
+            else:
+                request_timeout = self.settings.request_timeout_seconds
             try:
                 response = self.session.post(
                     self.settings.api_url,
                     json=payload,
                     headers=headers,
-                    timeout=self.settings.request_timeout_seconds,
+                    timeout=request_timeout,
                 )
             except requests.RequestException as exc:
                 if attempt + 1 >= attempts:

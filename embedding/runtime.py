@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import math
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -29,6 +30,21 @@ DEFAULT_EMBEDDING_MODEL_REVISION = EMBEDDING_MODEL_REVISION
 
 class EmbeddingCapacityError(RuntimeError):
     """Raised when the bounded embedding executor has no admission capacity."""
+
+
+class EmbeddingDeadlineExceeded(RuntimeError):
+    """Raised when the bounded embedding deadline was exceeded."""
+
+
+def embedding_timeout_seconds() -> float:
+    raw = os.getenv("EMBEDDING_TIMEOUT_SECONDS", "30").strip()
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError("EMBEDDING_TIMEOUT_SECONDS must be a number") from exc
+    if not math.isfinite(value) or not 0.1 <= value <= 300:
+        raise ValueError("EMBEDDING_TIMEOUT_SECONDS must be between 0.1 and 300")
+    return value
 
 
 def _positive_int(name: str, default: int, *, maximum: int) -> int:
@@ -175,14 +191,14 @@ def embedding_admission() -> threading.BoundedSemaphore:
     return threading.BoundedSemaphore(embedding_max_outstanding_jobs())
 
 
-async def run_embedding_job(function: Callable[..., T], *args: Any) -> T:
+async def run_embedding_job(function: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     admission = embedding_admission()
     if not admission.acquire(blocking=False):
         raise EmbeddingCapacityError(
             "the bounded embedding executor is at capacity"
         )
     try:
-        future = embedding_executor().submit(function, *args)
+        future = embedding_executor().submit(function, *args, **kwargs)
     except BaseException:
         admission.release()
         raise
@@ -192,7 +208,15 @@ async def run_embedding_job(function: Callable[..., T], *args: Any) -> T:
     # the awaiting coroutine so cancellation cannot free a slot prematurely and
     # allow the real number of outstanding embedding jobs to exceed the bound.
     future.add_done_callback(lambda _future: admission.release())
-    return await asyncio.wrap_future(future)
+    try:
+        return await asyncio.wait_for(
+            asyncio.wrap_future(future),
+            timeout=embedding_timeout_seconds(),
+        )
+    except asyncio.TimeoutError as exc:
+        if future.done() and not future.cancelled():
+            return future.result()
+        raise EmbeddingDeadlineExceeded("the bounded embedding deadline was exceeded") from exc
 
 
 def warm_embedding_runtime() -> dict[str, Any]:

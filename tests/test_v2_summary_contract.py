@@ -153,7 +153,7 @@ def test_same_content_fallback_is_upgraded_after_provider_recovery() -> None:
     )
 
     class RecoveredProvider:
-        def generate(self, source, *, repair_feedback=None):
+        def generate(self, source, *, repair_feedback=None, deadline=None):
             return json.dumps({"summary": generated_summary})
 
     class Store:
@@ -230,10 +230,10 @@ def test_applied_response_is_replayed_after_backend_crash() -> None:
     embed_calls = 0
     original_embed = pipeline.embed_repository
 
-    def counted_embed(source):
+    def counted_embed(source, deadline=None):
         nonlocal embed_calls
         embed_calls += 1
-        return original_embed(source)
+        return original_embed(source, deadline=deadline)
 
     pipeline.embed_repository = counted_embed  # type: ignore[method-assign]
 
