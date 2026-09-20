@@ -40,7 +40,7 @@ _MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
 _MARKDOWN_STRUCTURE = re.compile(
     r"(?m)^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)|```|~~~|`"
 )
-_MARKDOWN_EMPHASIS = re.compile(r"(\*\*|__|\*|_|~~)(.*?)")
+_MARKDOWN_EMPHASIS = re.compile(r"(\*\*|__|\*|_|~~)(.*?)\1", re.DOTALL)
 _URL = re.compile(r"https?://\S+")
 
 
