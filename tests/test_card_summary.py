@@ -229,6 +229,29 @@ def test_description_fallback_remains_two_factual_sentences_and_bounded() -> Non
     assert len(artifact.summary) <= CARD_SUMMARY_MAX_CHARS
 
 
+def test_missing_summary_evidence_skips_provider_and_uses_metadata_fallback() -> None:
+    class UnexpectedProvider:
+        def generate(self, *args, **kwargs):
+            pytest.fail("the provider must not be called without summary evidence")
+
+    repo = {
+        "full_name": "weave/empty-repository",
+        "description": "",
+        "readme": "",
+        "topics": [],
+        "languages": [],
+        "primary_language": "Unknown",
+    }
+
+    artifact = CardSummaryPipeline(provider=UnexpectedProvider()).summarize(repo, repo)
+
+    assert artifact.source == "description_fallback"
+    assert artifact.summary == (
+        "weave/empty-repository is a GitHub repository. "
+        "Its description does not yet provide more project details."
+    )
+
+
 @pytest.mark.parametrize(
     "response",
     [

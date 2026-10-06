@@ -94,6 +94,7 @@ def valid_production_env() -> dict[str, str]:
         "SUMMARY_MAX_RETRIES": "2",
         "SUMMARY_RETRY_BASE_SECONDS": "1",
         "EMBEDDING_WARMUP_ON_STARTUP": "true",
+        "EMBEDDING_TIMEOUT_SECONDS": "30",
         "EMBEDDING_MAX_CONCURRENCY": "1",
         "EMBEDDING_EXECUTOR_WORKERS": "1",
         "EMBEDDING_MAX_OUTSTANDING_JOBS": "4",
@@ -154,6 +155,13 @@ def test_production_rejects_summary_settings_that_can_overrun_the_lease(
     environment[field] = value
 
     assert field in issue_names(environment)
+
+
+def test_production_requires_a_bounded_embedding_timeout() -> None:
+    environment = valid_production_env()
+    environment["EMBEDDING_TIMEOUT_SECONDS"] = "301"
+
+    assert "EMBEDDING_TIMEOUT_SECONDS" in issue_names(environment)
 
 
 def test_valid_tls_redis_production_environment_passes() -> None:

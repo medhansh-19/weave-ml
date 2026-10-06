@@ -71,6 +71,7 @@ from inference.runtime import (
 )
 from retrieval.v2_retriever import QdrantV2Retriever, RetrievalDependencyError
 from summarization.contracts import CardSummaryArtifact, card_summary_from_payload
+from summarization.settings import SummarySettings
 from utils.readme_processor import clean_markdown_copy, process_markdown
 
 router = APIRouter(prefix="/api/v2", tags=["v2"])
@@ -403,7 +404,11 @@ def validate_v2_runtime_configuration() -> V2FeedbackSettings:
     settings = feedback_settings()
     _repository_job_lock_settings()
     _health_timeout_seconds()
+    embedding_timeout_seconds()
     embedding_warmup_enabled()
+    # Constructing settings is network-free and catches malformed provider
+    # configuration before an ingest request can occupy an embedding worker.
+    SummarySettings.from_env()
     validate_recommendation_runtime()
     validate_service_runtime()
     # Client construction validates retrieval/ranker configuration and, when

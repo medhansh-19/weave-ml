@@ -435,4 +435,3 @@ def test_refresh_repository_job_backfills_missing_summary_fields_for_older_schem
     assert res["accepted"] is True
     assert res["status"] == "applied"
     assert res["feature_version"] == 2
-

@@ -150,6 +150,13 @@ def build_summary_source(
     if languages:
         metadata.append(f"Languages: {', '.join(languages[:12])}")
 
+    # The repository name is useful context for a model, but it is not enough
+    # evidence to ask one to invent a description.  Without a description,
+    # topics/languages, or README prose, make the caller use the deterministic
+    # metadata fallback instead of paying for a potentially hallucinated card.
+    has_summary_evidence = bool(
+        description or topics or languages or high or neutral
+    )
     chunks = metadata + ["README high-signal excerpts:"] + high + neutral
     selected: list[str] = []
     used = 0
@@ -168,6 +175,6 @@ def build_summary_source(
         if used >= max_chars:
             break
 
-    prompt_input = "\n\n".join(selected)
+    prompt_input = "\n\n".join(selected) if has_summary_evidence else ""
     comparisons = tuple(dict.fromkeys((*variants, prompt_input)))
     return SummarySource(prompt_input=prompt_input, comparison_texts=comparisons)
