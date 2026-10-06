@@ -71,6 +71,7 @@ from inference.runtime import (
 )
 from retrieval.v2_retriever import QdrantV2Retriever, RetrievalDependencyError
 from summarization.contracts import CardSummaryArtifact, card_summary_from_payload
+from summarization.provider import SUMMARY_COMPLETION_RESERVE_SECONDS
 from summarization.settings import SummarySettings
 from utils.readme_processor import clean_markdown_copy, process_markdown
 
@@ -489,7 +490,10 @@ def _embed_repository_job_locked(request: RepositoryJob, lock: Any, deadline: fl
                 retryable=False,
             )
         artifact = card_summary_from_payload(stored_payload)
-        if artifact is None or not pipeline.card_summarizer.is_current(artifact):
+        if artifact is None or (
+            not pipeline.card_summarizer.is_current(artifact)
+            and _summary_upgrade_has_time(pipeline, deadline)
+        ):
             payload = _repository_embedding_payload(request)
             artifact = pipeline.summarize_repository(payload, deadline=deadline)
             lock.assert_owned()
@@ -531,7 +535,6 @@ def _embed_repository_job_locked(request: RepositoryJob, lock: Any, deadline: fl
             ),
             artifact=artifact,
         )
-
     payload = _repository_embedding_payload(request)
     result = pipeline.embed_repository(payload, deadline=deadline)
     result.payload["content_job_id"] = job_id
@@ -578,6 +581,21 @@ def _embed_repository_job_locked(request: RepositoryJob, lock: Any, deadline: fl
             or result.embedding_version
         ),
         artifact=stored_artifact,
+    )
+
+
+def _summary_upgrade_has_time(
+    pipeline: Any,
+    deadline: float | None,
+) -> bool:
+    """Avoid delaying replay of a durable fallback through another timeout."""
+
+    if deadline is None:
+        return True
+    return (
+        deadline - time.monotonic()
+        >= pipeline.card_summarizer.settings.request_timeout_seconds
+        + SUMMARY_COMPLETION_RESERVE_SECONDS
     )
 
 
@@ -971,6 +989,12 @@ async def onboard_user(request: OnboardingJob, http_request: Request):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Embedding capacity is temporarily exhausted; retry the request.",
+            headers={"Retry-After": "2"},
+        ) from exc
+    except EmbeddingDeadlineExceeded as exc:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Onboarding generation exceeded its bounded deadline.",
             headers={"Retry-After": "2"},
         ) from exc
     except Exception as exc:

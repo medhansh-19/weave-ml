@@ -20,6 +20,7 @@ from summarization.pipeline import CardSummaryPipeline
 from summarization.prompt import RESPONSE_JSON_SCHEMA, SYSTEM_PROMPT, user_prompt
 from summarization.provider import (
     OpenRouterSummaryProvider,
+    SUMMARY_COMPLETION_RESERVE_SECONDS,
     SummaryProviderError,
     SummaryRateLimiter,
 )
@@ -518,6 +519,28 @@ def test_provider_does_not_honor_retry_after_beyond_the_request_budget() -> None
 
     assert len(session.calls) == 1
     assert sleeps == []
+
+
+def test_provider_reserves_time_for_embedding_and_durable_storage(monkeypatch) -> None:
+    session = FakeSession([FakeResponse(503)])
+    provider = OpenRouterSummaryProvider(
+        SummarySettings(
+            api_key="summary-test-key-strong",
+            request_timeout_seconds=30,
+            max_retries=0,
+        ),
+        session=session,
+        limiter=NoWaitLimiter(),
+    )
+    monkeypatch.setattr("summarization.provider.time.monotonic", lambda: 100.0)
+
+    with pytest.raises(SummaryProviderError, match="HTTP 503"):
+        provider.generate(
+            "Repository: weave/example\\nDescription: example",
+            deadline=130.0,
+        )
+
+    assert session.calls[0]["timeout"] == 30 - SUMMARY_COMPLETION_RESERVE_SECONDS
 
 
 def test_rate_limiter_fails_instead_of_waiting_past_the_request_budget() -> None:

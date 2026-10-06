@@ -16,6 +16,10 @@ from .settings import SummarySettings
 logger = logging.getLogger(__name__)
 MAX_RETRY_DELAY_SECONDS = 2.0
 MAX_RATE_LIMIT_WAIT_SECONDS = 2.0
+# Keep enough of the embedding job deadline for deterministic fallback,
+# embedding, and the durable Qdrant write.  The provider is an enhancement,
+# never a reason to abandon an otherwise valid repository job.
+SUMMARY_COMPLETION_RESERVE_SECONDS = 10.0
 
 
 class SummaryProviderError(RuntimeError):
@@ -115,15 +119,12 @@ class OpenRouterSummaryProvider:
         payload = self._request_payload(source, repair_feedback=repair_feedback)
         attempts = self.settings.max_retries + 1
         for attempt in range(attempts):
-            if deadline is not None and time.monotonic() > deadline:
-                raise SummaryProviderError("summary generation exceeded embedding job deadline")
+            self._request_budget(deadline)
             self.limiter.wait()
-            if deadline is not None:
-                if time.monotonic() > deadline:
-                    raise SummaryProviderError("summary generation exceeded embedding job deadline")
-                request_timeout = min(self.settings.request_timeout_seconds, max(0.1, deadline - time.monotonic()))
-            else:
-                request_timeout = self.settings.request_timeout_seconds
+            request_timeout = min(
+                self.settings.request_timeout_seconds,
+                self._request_budget(deadline),
+            )
             try:
                 response = self.session.post(
                     self.settings.api_url,
@@ -178,3 +179,16 @@ class OpenRouterSummaryProvider:
             self.sleeper(min(delay, MAX_RETRY_DELAY_SECONDS))
 
         raise SummaryProviderError("summary provider retry budget was exhausted")
+
+    @staticmethod
+    def _request_budget(deadline: float | None) -> float:
+        """Return provider time that cannot consume the job's completion reserve."""
+
+        if deadline is None:
+            return float("inf")
+        remaining = deadline - time.monotonic() - SUMMARY_COMPLETION_RESERVE_SECONDS
+        if remaining < 0.1:
+            raise SummaryProviderError(
+                "summary generation would consume the embedding completion reserve"
+            )
+        return remaining

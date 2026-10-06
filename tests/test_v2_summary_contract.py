@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 import uuid
@@ -180,6 +181,40 @@ def test_same_content_fallback_is_upgraded_after_provider_recovery() -> None:
         response["card_summary"]["model_version"]
         == pipeline.card_summarizer.settings.model_id
     )
+
+
+def test_durable_fallback_is_replayed_when_the_provider_cannot_fit_the_job_budget() -> None:
+    request = _job()
+    fallback = CardSummaryPipeline().summarize(
+        request.repository.model_dump(mode="json"),
+        request.repository.model_dump(mode="json"),
+    )
+    point = _point(request, artifact=fallback, stored_job=str(uuid.uuid4()))
+
+    class UnexpectedProvider:
+        def generate(self, *args, **kwargs):
+            pytest.fail("a saved fallback must not wait through a full provider timeout")
+
+    pipeline = RepositoryEmbeddingPipeline(
+        embedder=FakeEmbedder(),
+        card_summarizer=CardSummaryPipeline(
+            provider=UnexpectedProvider(),
+        ),
+    )
+    store = MagicMock()
+
+    with patch("api.v2._repository_points", return_value=[point]), patch(
+        "api.v2.repository_embedding_pipeline", return_value=pipeline
+    ), patch("api.v2.repository_store", return_value=store):
+        response = _embed_repository_job_locked(
+            request,
+            OwnedLock(),
+            deadline=time.monotonic() + 5,
+        )
+
+    assert response["status"] == "current"
+    assert response["card_summary"] == fallback.model_dump(mode="json")
+    store.compare_and_set_card_summary.assert_not_called()
 
 
 def test_same_version_different_content_cannot_attach_a_summary() -> None:
