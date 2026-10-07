@@ -347,20 +347,39 @@ def test_description_fallback_removes_markdown_links_and_unsafe_instructions() -
     assert "http" not in artifact.summary
 
 
-def test_description_fallback_preserves_dunder_identifiers() -> None:
+def test_description_fallback_renders_dunder_identifiers_as_plain_prose() -> None:
     repo = {
         "full_name": "weave/python-protocols",
         "description": (
-            "The adapter implements __getitem__ for indexed repository access. "
-            "It gives Python maintainers a small typed interface."
+            "The adapter implements __getitem__ and __class_getitem__ for indexed "
+            "repository access. It gives Python maintainers a small typed interface."
         ),
         "primary_language": "Python",
     }
 
     artifact = CardSummaryPipeline().summarize(repo, repo)
 
-    assert "__getitem__" in artifact.summary
+    assert "dunder getitem" in artifact.summary
+    assert "dunder class getitem" in artifact.summary
+    assert "_" not in artifact.summary
     assert "implements getitem" not in artifact.summary
+
+
+def test_description_fallback_removes_unbalanced_inline_markdown_punctuation() -> None:
+    repo = {
+        "full_name": "weave/plain-prose",
+        "description": (
+            "The deep_learning adapter finds *_cache_* entries without leaking ** "
+            "formatting. It gives maintainers predictable discovery cards."
+        ),
+        "primary_language": "Python",
+    }
+
+    artifact = CardSummaryPipeline().summarize(repo, repo)
+
+    assert "deep learning" in artifact.summary
+    assert "cache" in artifact.summary
+    assert not {"*", "_", "~"}.intersection(artifact.summary)
 
 
 def test_description_fallback_still_strips_unambiguous_markdown_emphasis() -> None:

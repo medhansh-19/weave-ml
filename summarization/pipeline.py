@@ -45,7 +45,8 @@ _MARKDOWN_EMPHASIS = re.compile(
     r"|(?<![\w*_])([*_])([^\W_][\s\S]*?[^\W_]|[^\W_])\3(?![\w*_])",  # single-marker: content must start/end with letter/digit
     re.DOTALL,
 )
-_DUNDER_IDENTIFIER = re.compile(r"__[A-Za-z_][A-Za-z0-9_]*__")
+_DUNDER_IDENTIFIER = re.compile(r"__([A-Za-z_][A-Za-z0-9_]*)__")
+_INLINE_MARKDOWN_PUNCTUATION = re.compile(r"[*_~]+")
 _URL = re.compile(r"https?://\S+")
 
 
@@ -68,14 +69,20 @@ def _plain_description(value: Any) -> str:
     text = _MARKDOWN_LINK.sub(r"\1", text)
     text = _URL.sub("", text)
     text = _MARKDOWN_STRUCTURE.sub("", text)
-    def strip_emphasis(match: re.Match[str]) -> str:
-        # Python-style dunder names are repository metadata, not emphasis.
-        # Preserve the underscores rather than silently changing the symbol.
-        if match.group(1) == "__" and _DUNDER_IDENTIFIER.fullmatch(match.group(0)):
-            return match.group(0)
-        return match.group(2) or match.group(4) or ""
-
-    text = _MARKDOWN_EMPHASIS.sub(strip_emphasis, text)
+    # Spell Python special-method identifiers as prose before stripping emphasis.
+    # This keeps ``__getitem__`` distinguishable from ``getitem`` without leaking
+    # double underscores that Markdown renderers interpret as emphasis markers.
+    text = _DUNDER_IDENTIFIER.sub(
+        lambda match: f"dunder {match.group(1).replace('_', ' ')}",
+        text,
+    )
+    text = _MARKDOWN_EMPHASIS.sub(
+        lambda match: match.group(2) or match.group(4) or "",
+        text,
+    )
+    # Unbalanced emphasis markers, wildcards, and snake-case separators are not
+    # useful formatting in a discovery card. Render their words as plain prose.
+    text = _INLINE_MARKDOWN_PUNCTUATION.sub(" ", text)
     return normalize_summary(text)
 
 
