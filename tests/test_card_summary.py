@@ -347,6 +347,38 @@ def test_description_fallback_removes_markdown_links_and_unsafe_instructions() -
     assert "http" not in artifact.summary
 
 
+def test_description_fallback_preserves_dunder_identifiers() -> None:
+    repo = {
+        "full_name": "weave/python-protocols",
+        "description": (
+            "The adapter implements __getitem__ for indexed repository access. "
+            "It gives Python maintainers a small typed interface."
+        ),
+        "primary_language": "Python",
+    }
+
+    artifact = CardSummaryPipeline().summarize(repo, repo)
+
+    assert "__getitem__" in artifact.summary
+    assert "implements getitem" not in artifact.summary
+
+
+def test_description_fallback_still_strips_unambiguous_markdown_emphasis() -> None:
+    repo = {
+        "full_name": "weave/markdown-description",
+        "description": (
+            "A **collaborative workspace** coordinates repository reviews. "
+            "It gives maintainers durable context."
+        ),
+        "primary_language": "Python",
+    }
+
+    artifact = CardSummaryPipeline().summarize(repo, repo)
+
+    assert "**" not in artifact.summary
+    assert "collaborative workspace" in artifact.summary
+
+
 def test_prompt_and_artifact_versions_are_explicit() -> None:
     assert "NOT a README rewrite" in SYSTEM_PROMPT
     assert "never exceed 360" in SYSTEM_PROMPT

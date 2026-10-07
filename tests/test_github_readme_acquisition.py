@@ -175,6 +175,22 @@ def test_get_readme_accepts_an_incomplete_alias_set():
 
 
 @pytest.mark.unit
+def test_get_readme_uses_valid_alias_when_partial_errors_omit_branch_metadata():
+    response = _complete_readme_response(readme1={"text": "# Valid"})
+    del response["data"]["repository"]["defaultBranchRef"]
+    response["errors"] = [{"message": "defaultBranchRef timed out"}]
+    client = GitHubGraphQLClient(token="test-token")
+    client.execute = MagicMock(return_value=response)
+
+    result = client.get_readme("owner", "repo")
+
+    assert result == "# Valid"
+    assert result.default_branch is None
+    assert result.source_path == "README.md"
+    assert result.base_url == "https://raw.githubusercontent.com/owner/repo/HEAD/"
+
+
+@pytest.mark.unit
 def test_get_readme_skips_an_incomplete_alias_object():
     client = GitHubGraphQLClient(token="test-token")
     client.execute = MagicMock(

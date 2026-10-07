@@ -45,6 +45,7 @@ _MARKDOWN_EMPHASIS = re.compile(
     r"|(?<![\w*_])([*_])([^\W_][\s\S]*?[^\W_]|[^\W_])\3(?![\w*_])",  # single-marker: content must start/end with letter/digit
     re.DOTALL,
 )
+_DUNDER_IDENTIFIER = re.compile(r"__[A-Za-z_][A-Za-z0-9_]*__")
 _URL = re.compile(r"https?://\S+")
 
 
@@ -67,7 +68,14 @@ def _plain_description(value: Any) -> str:
     text = _MARKDOWN_LINK.sub(r"\1", text)
     text = _URL.sub("", text)
     text = _MARKDOWN_STRUCTURE.sub("", text)
-    text = _MARKDOWN_EMPHASIS.sub(lambda m: m.group(2) or m.group(4) or "", text)
+    def strip_emphasis(match: re.Match[str]) -> str:
+        # Python-style dunder names are repository metadata, not emphasis.
+        # Preserve the underscores rather than silently changing the symbol.
+        if match.group(1) == "__" and _DUNDER_IDENTIFIER.fullmatch(match.group(0)):
+            return match.group(0)
+        return match.group(2) or match.group(4) or ""
+
+    text = _MARKDOWN_EMPHASIS.sub(strip_emphasis, text)
     return normalize_summary(text)
 
 

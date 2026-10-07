@@ -159,12 +159,14 @@ class GitHubGraphQLClient:
             repo = data["repository"]
             if not isinstance(repo, dict):
                 raise GitHubClientError("README query could not resolve the repository")
-            if "defaultBranchRef" not in repo:
-                raise GitHubClientError(
-                    "README query response is missing default-branch metadata"
-                )
-
-            default_branch = (repo.get("defaultBranchRef") or {}).get("name")
+            # A field-level GraphQL error may omit defaultBranchRef while a
+            # README alias still resolves successfully.  The alias is usable;
+            # build_readme_base_url deliberately falls back to GitHub's HEAD
+            # reference when branch metadata is unavailable.
+            branch_ref = repo.get("defaultBranchRef")
+            default_branch = (
+                branch_ref.get("name") if isinstance(branch_ref, dict) else None
+            )
             for key, source_path in README_CANDIDATES:
                 blob = repo.get(key)
                 if blob is None:
