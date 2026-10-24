@@ -175,6 +175,45 @@ def test_new_content_cannot_erase_newer_lifecycle(incoming):
     client.close()
 
 
+def test_same_version_content_cas_winner_does_not_drop_lifecycle_observation():
+    from api.contracts import RepositoryJob
+    from api.v2 import _embed_repository_job_locked
+    from embedding.embedding_pipeline import RepositoryEmbeddingPipeline
+    from tests.test_v2_summary_contract import _job, FakeEmbedder
+    client, store, original = _indexed_feature_refresh_fixture()
+    lifecycle = observation(archived=True, day=2)
+    body = _job().model_dump(mode='json')
+    body['content_version'] = original.payload['content_version'] + 1
+    body['repository']['lifecycle'] = lifecycle
+    request = RepositoryJob.model_validate(body)
+    competing_job_id = str(uuid.uuid4())
+    actual_cas = store.compare_and_set_content
+
+    def publish_same_version_winner(result, *, expected_point):
+        client.set_payload(store.collection_name, {
+            'content_version': request.content_version,
+            'content_job_id': competing_job_id,
+        }, [original.id])
+        return actual_cas(result, expected_point=expected_point)
+
+    pipeline = RepositoryEmbeddingPipeline(embedder=FakeEmbedder())
+    try:
+        with patch('api.v2.repository_store', return_value=store), patch(
+            'api.v2._repository_points', return_value=[original]
+        ), patch('api.v2.repository_embedding_pipeline', return_value=pipeline), patch.object(
+            store, 'compare_and_set_content', side_effect=publish_same_version_winner
+        ):
+            result = _embed_repository_job_locked(request, OwnedLock())
+        assert result['status'] == 'current'
+        stored = client.retrieve(store.collection_name, [original.id], with_payload=True)[0]
+        assert stored.payload['content_version'] == request.content_version
+        assert stored.payload['content_job_id'] == competing_job_id
+        assert stored.payload['lifecycle_archived'] is True
+        assert stored.payload['lifecycle_observed_at'] == merge_lifecycle({}, lifecycle)['lifecycle_observed_at']
+    finally:
+        client.close()
+
+
 def test_delayed_archive_refresh_survives_newer_stats_version_without_rewinding_it():
     client, store, original = _indexed_feature_refresh_fixture()
     client.set_payload(store.collection_name, {'feature_version': 20, 'feature_job_id': str(uuid.uuid4()), 'star_count': 99}, [original.id])
